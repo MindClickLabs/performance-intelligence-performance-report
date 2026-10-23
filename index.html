@@ -625,8 +625,7 @@ function openProject(id, push = true){
   $("heroChips").innerHTML = `<span class="chip ${done ? "done" : ""}"><span class="dot"></span>${done ? "Completed" : "Underway"}</span>` +
     (p.brand ? `<span class="chip glass">${esc(p.brand)}</span>` : "") + (p.sector && p.sector !== "Hospitality" ? `<span class="chip glass">${esc(p.sector)}</span>` : "");
   $("heroName").textContent = p.property;
-  $("heroWhere").innerHTML = `<span style="display:inline-flex;gap:6px;align-items:center">${ICON_PIN}${esc(NA(locNice(p), "Multiple locations"))}</span>` +
-    (p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">Visit property site ${ICON_EXT}</a>` : "");
+  $("heroWhere").innerHTML = `<span style="display:inline-flex;gap:6px;align-items:center">${ICON_PIN}${esc(NA(locNice(p), "Multiple locations"))}</span>`;
   setVal("pTier", p.tier, "N/A");
   setVal("pTiming", p.timing || (done && p.end ? `Completed ${fmtMonth(p.end)}` : ""), "TBD");
   setVal("pScope", p.scopeLine, "N/A");
