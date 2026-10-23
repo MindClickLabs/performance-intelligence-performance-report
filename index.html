@@ -576,6 +576,24 @@ async function saveFile(filename, data, mime){
 }
 const csvCell = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
 const toCsv = rows => "\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+const pad2 = n => String(n).padStart(2, "0");
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const todayNice = () => { const d = new Date(); return `${["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; };
+const fileName = (what, ext) => `mindclick_PIPR_${slug(what)}_${todayIso()}.${ext}`;
+/* every CSV opens with the report's name, what it holds, when it was exported, the filters used, and the confidentiality line */
+function brandedCsv(title, filters, header, rows){
+  return toCsv([
+    ["mindclick | Product Intelligence™ Performance Report (PIPR)"],
+    [title],
+    [`Exported ${todayNice()}` + (DATA.built ? ` | Data as of ${DATA.built}` : "")],
+    ...(filters === null ? [] : [[`Filters: ${filters || "none (all records)"}`]]),
+    ["CONFIDENTIAL - FOR MINDCLICK SUBSCRIBERS"],
+    [],
+    header, ...rows,
+    [],
+    [`© ${new Date().getFullYear()} mindclick. Confidential, for mindclick subscribers only. Do not distribute.`],
+  ]);
+}
 const slug = s => s.normalize("NFKD").replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"_");
 
 
@@ -742,16 +760,20 @@ function contactHtml(c){
 
 $("projCsv").addEventListener("click", () => {
   const p = eff(); if (!p) return;
-  const rows = [["Field","Value"],
-    ["Property", p.property],["Project", p.project],...(p.verLabel ? [["Version", p.verLabel]] : []),["Status", p.status === "completed" ? "Completed" : "Underway"],
-    ["Location", locLine(p)],["Address", p.address],["Owner", p.owner],["Management", p.mgmt],["General contractor", p.gc],
-    ["Project type", p.ptype],["Tier", p.tier],["Timing", p.timing],["Completion date", p.end],["Scope", p.scopeLine],
-    ...p.stages.map(s => ["Stage", `${s.scope} | ${s.stage}`]),
-    ...p.goals.map(g => ["Property goal", g]),
-    ["Design firm", p.design],["Purchasing firm", p.procurement],
-    ...["design","procurement","gc"].flatMap(k => (p.contact[k] || []).map(c => [{design: "Design contact", procurement: "Purchasing contact", gc: "GC contact"}[k], [c.name, c.title, c.firm, c.email, c.phone].filter(Boolean).join(" / ")])),
-    ...(p.status === "completed" ? p.suppliers.map(s => ["Featured supplier", s]) : [["Sales opportunity", p.salesOpp]])];
-  saveFile(`PIPR_${slug(p.property + (p.verLabel ? " " + p.verLabel : ""))}.csv`, toCsv(rows), "text/csv");
+  const S = (sec, f, v) => [sec, f, v ?? ""];
+  const rows = [
+    S("Property profile", "Property", p.property), S("Property profile", "HubSpot project", p.project), ...(p.verLabel ? [S("Property profile", "Evaluation", p.verLabel)] : []),
+    S("Property profile", "Status", p.status === "completed" ? "Completed" : "Underway"), S("Property profile", "Location", locLine(p)), S("Property profile", "Address", p.address),
+    S("Property profile", "Owner", p.owner), S("Property profile", "Management", p.mgmt), S("Property profile", "General contractor", p.gc),
+    S("Project intelligence", "Project type", p.ptype), S("Project intelligence", "Tier", p.tier), S("Project intelligence", "Timing", p.timing || (p.status === "completed" && p.end ? `Completed ${fmtMonth(p.end)}` : "")),
+    S("Project intelligence", "Scope", p.scopeLine),
+    ...p.stages.map(s => S("Project intelligence", "Stage", `${s.scope} | ${s.stage}`)),
+    ...p.goals.map(g => S("Project intelligence", "Property goal", g)),
+    S("Engagement path", "Design firm", p.design), S("Engagement path", "Purchasing firm", p.procurement),
+    ...["design","procurement","gc"].flatMap(k => (p.contact[k] || []).map(c => S("Engagement path", {design: "Design contact", procurement: "Purchasing contact", gc: "GC contact"}[k], [c.name, c.title, c.firm, c.email, c.phone].filter(Boolean).join(" / ")))),
+    ...(p.status === "completed" ? p.suppliers.map(s => S("Engagement path", "Featured supplier", s)) : [S("Engagement path", "Sales opportunity", p.salesOpp)])];
+  saveFile(fileName(p.property + (p.verLabel ? " " + p.verLabel : ""), "csv"),
+    brandedCsv(`Project profile: ${p.property}${p.verLabel ? ` (${p.verLabel})` : ""}`, null, ["Section", "Field", "Value"], rows), "text/csv");
 });
 
 /* ---------- map (Natural Earth + US Census outlines, drawn locally) ---------- */
@@ -768,8 +790,7 @@ function geo(){
   return geoCache;
 }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-function drawMap(p){
-  const box = $("pMap");
+function drawMap(p, box = $("pMap"), colors = null){
   if (!p.ll){ box.innerHTML = `<div class="empty">${p.city ? "Location not mapped yet" : "Multiple locations"}</div>`; return; }
   const g = geo();
   if (!g || !window.d3){ box.innerHTML = `<div class="empty">${esc(locLine(p))}</div>`; return; }
@@ -778,7 +799,7 @@ function drawMap(p){
   const spanDeg = W < 420 ? 6 : 8;
   const proj = d3.geoMercator().center([lon, lat]).scale(W / (spanDeg * Math.PI / 180)).translate([W/2, H/2 + 14]);
   const path = d3.geoPath(proj);
-  const C = {water: cssVar("--water"), land: cssVar("--land"), border: cssVar("--border"), label: cssVar("--label"), pin: cssVar("--pin"), halo: cssVar("--halo")};
+  const C = colors || {water: cssVar("--water"), land: cssVar("--land"), border: cssVar("--border"), label: cssVar("--label"), pin: cssVar("--pin"), halo: cssVar("--halo")};
   const font = "Plus Jakarta Sans, Helvetica, Arial, sans-serif";
   const [px, py] = proj([lon, lat]);
   // labels: greedy placement, skipping anything that would collide with the pin or other labels
@@ -831,105 +852,265 @@ $("projPdf").addEventListener("click", async () => {
   const p = eff(); if (!p) return;
   if (!window.jspdf){ toast("The PDF library didn’t load. Check your connection and try again."); return; }
   const btn = $("projPdf"); btn.disabled = true;
-  try {
-    const {jsPDF} = window.jspdf;
-    const doc = new jsPDF({orientation: "landscape", unit: "pt", format: "letter"});
-    const PW = 792, PH = 612, M = 28, G = 14, CW = (PW - 2*M - 2*G) / 3;
-    const green = [0,62,50], mint = [165,223,211], mid = [0,111,98], ink = [28,38,34], muted = [95,109,104], linen = [249,242,236];
-    // header
-    doc.setFillColor(...linen); doc.rect(0, 0, PW, 64, "F");
-    const logoSvg = document.querySelector(".site-logo .logo").cloneNode(true);
-    logoSvg.querySelectorAll(".mcl-2").forEach(n => n.setAttribute("fill", "#003e32")); logoSvg.querySelector("style")?.remove();
-    logoSvg.querySelectorAll(".mcl-1").forEach(n => n.setAttribute("fill", "#63a09a"));
-    logoSvg.setAttribute("width", "627"); logoSvg.setAttribute("height", "246");
-    const logo = await svgToPng(logoSvg, 1);
-    if (logo) doc.addImage(logo.data, "PNG", M, 14, 92, 92 * logo.h / logo.w);
-    doc.setDrawColor(99,160,154); doc.setLineWidth(2); doc.line(M + 104, 16, M + 104, 48);
-    doc.setTextColor(...green); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-    doc.text(pdfText("Product Intelligence™ Performance Report (PIPR)"), M + 114, 30);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(...muted); doc.text("For mindclick subscribers", M + 114, 44);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...ink);
-    doc.text(pdfText(p.property + (p.verLabel ? ` (${p.verLabel})` : "")), PW - M, 30, {align: "right", maxWidth: 260});
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...muted);
-    doc.text(p.status === "completed" ? "Completed project" : "Project underway", PW - M, 44, {align: "right"});
-    // footer
-    doc.setFillColor(...green); doc.rect(0, PH - 30, PW, 30, "F");
-    doc.setTextColor(255,255,255); doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
-    doc.text(pdfText("mindclick • Product Intelligence™ Performance Report"), M, PH - 12);
-    doc.setFont("helvetica", "bold"); doc.text("CONFIDENTIAL - FOR SUBSCRIBERS", PW - M, PH - 12, {align: "right"});
-    const top = 80, bottom = PH - 44;
-    const col = i => M + i * (CW + G);
-    const panelHead = (i, t) => { doc.setFillColor(...mint); doc.roundedRect(col(i), top, CW, 22, 6, 6, "F"); doc.rect(col(i), top + 12, CW, 10, "F");
-      doc.setTextColor(...green); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(t, col(i) + CW/2, top + 15, {align: "center"});
-      doc.setDrawColor(226,221,212); doc.setLineWidth(.8); doc.roundedRect(col(i), top, CW, bottom - top, 6, 6, "S"); };
-    ["PROPERTY PROFILE","PROJECT INTELLIGENCE","ENGAGEMENT PATH"].forEach((t, i) => panelHead(i, t));
-    const pad = 10, inner = CW - 2*pad;
-    const field = (i, y, label, lines, opts = {}) => {
-      const x = col(i) + pad;
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...mid); doc.text(label, x, y);
-      y += 12; doc.setFont("helvetica", opts.bold === false ? "normal" : "bold"); doc.setFontSize(opts.size || 9.5); doc.setTextColor(...ink);
-      for (const l of [].concat(lines)){
-        const wrapped = doc.splitTextToSize(pdfText(l), inner);
-        for (const w of wrapped){ if (opts.maxY && y > opts.maxY) return {y, cut: true}; doc.text(w, x, y); y += (opts.lh || 12); }
-      }
-      return {y: y + 6};
-    };
-    const pdfFirms = (i, y, label, value, list, empty = "TBD") => {
-      const fc = firmContacts(value, list), x = col(i) + pad;
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...mid); doc.text(label, x, y); y += 12;
-      if (!fc.length){ doc.setFontSize(9.5); doc.setTextColor(...ink); doc.text(empty, x, y); return y + 18; }
-      for (const f of fc){
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(...ink);
-        for (const w of doc.splitTextToSize(pdfText(f.firm), inner)){ doc.text(w, x, y); y += 12; }
-        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...muted);
-        for (const c of f.contacts) for (const line of [c.name + (c.title ? ", " + titleCase(c.title) : ""), c.email, c.phone].filter(Boolean))
-          for (const w of doc.splitTextToSize(pdfText(line), inner)){ doc.text(w, x, y); y += 10.5; }
-        y += 2;
-      }
-      return y + 6;
-    };
-    // column 1
-    let y = top + 32;
-    if (p.photo && IMAGES[p.photo]){
-      const s = await imgSize(IMAGES[p.photo]); const bw = inner, bh = 128;
-      if (s){ const r = Math.min(bw / s.w, bh / s.h), w = s.w * r, h = s.h * r; doc.addImage(IMAGES[p.photo], "JPEG", col(0) + pad + (bw - w)/2, y, w, h); }
-      y += bh + 14;
-    }
-    y = field(0, y, "Property", p.property).y;
-    y = field(0, y, "Location", NA(locLine(p), "Multiple locations")).y;
-    y = field(0, y, "Owner", NA(p.owner, "TBD")).y;
-    y = field(0, y, "Management", NA(p.mgmt, "TBD")).y;
-    y = pdfFirms(0, y, "General contractor", p.gc, p.contact.gc, "N/A");
-    // column 2
-    y = top + 36;
-    y = field(1, y, "Project type", NA(p.ptype)).y;
-    y = field(1, y, "Tier", NA(p.tier)).y;
-    y = field(1, y, "Timing", NA(p.timing || (p.status === "completed" && p.end ? `Completed ${fmtMonth(p.end)}` : ""), "TBD")).y;
-    y = field(1, y, "Scope", NA(p.scopeLine)).y;
-    y = field(1, y, "Stage", p.stages.length ? p.stages.map(s => `${s.scope} | ${s.stage}`) : ["N/A"]).y;
-    field(1, y + 4, "Property goals", p.goals.length ? p.goals.map(g => "•  " + g) : ["Not set"], {bold: false, maxY: bottom - 10});
-    // column 3
-    y = top + 36;
-    y = pdfFirms(2, y, "Design firm", p.design, p.contact.design);
-    y = pdfFirms(2, y, "Purchasing firm", p.procurement, p.contact.procurement);
-    const mapH = 128, mapY = bottom - mapH - 10;
-    if (p.status === "completed"){
-      const list = p.suppliers.length ? p.suppliers : ["None recorded yet"];
-      const room = Math.floor((mapY - 22 - y - 12) / 11);
-      const shown = list.length > room ? list.slice(0, Math.max(1, room - 1)).concat([`+ ${list.length - room + 1} more`]) : list;
-      field(2, y, p.suppliers.length ? `Featured suppliers (${p.suppliers.length})` : "Featured suppliers", shown, {bold: false, size: 8.5, lh: 11});
-    } else {
-      field(2, y, "Sales opportunity", NA(p.salesOpp, "TBD"), {size: 13, lh: 16});
-    }
-    const mapPng = await svgToPng($("pMap").querySelector("svg"), 2);
-    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...mid); doc.text("Map", col(2) + pad, mapY - 6);
-    if (mapPng){ const r = Math.min(inner / mapPng.w, mapH / mapPng.h); doc.addImage(mapPng.data, "PNG", col(2) + pad, mapY, mapPng.w * r, mapPng.h * r); }
-    else { doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...ink); doc.text(pdfText(NA(locLine(p), "Multiple locations")), col(2) + pad, mapY + 12); }
-    await saveFile(`PIPR_${slug(p.property + (p.verLabel ? " " + p.verLabel : ""))}.pdf`, doc.output("blob"), "application/pdf");
-  } catch(e){ console.error(e); toast("The PDF couldn’t be created."); }
+  try { await saveFile(fileName(p.property + (p.verLabel ? " " + p.verLabel : ""), "pdf"), await buildProjectPdf(p), "application/pdf"); }
+  catch(e){ console.error(e); toast("The PDF couldn’t be created."); }
   finally { btn.disabled = false; }
 });
 
+/* ---- canvas helpers for the PDF (photo panel, map, watermark) ---- */
+function canvasRR(ctx, x, y, w, h, r){ const [tl, tr, br, bl] = [].concat(r).length === 4 ? r : [r, r, r, r];
+  ctx.beginPath(); ctx.moveTo(x + tl, y); ctx.lineTo(x + w - tr, y); ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
+  ctx.lineTo(x + w, y + h - br); ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h); ctx.lineTo(x + bl, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - bl); ctx.lineTo(x, y + tl); ctx.quadraticCurveTo(x, y, x + tl, y); ctx.closePath(); }
+function loadImg(src){ return new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
+async function heroPhotoPanel(src, w, h, S = 3){
+  const c = document.createElement("canvas"); c.width = w * S; c.height = h * S; const x = c.getContext("2d"); x.scale(S, S);
+  x.fillStyle = "#F9F2EC"; x.fillRect(0, 0, w, h);
+  x.save(); canvasRR(x, 0, 0, w, h, [0, 14, 14, 0]); x.clip(); x.fillStyle = "#0a2a23"; x.fillRect(0, 0, w, h);
+  const im = await loadImg(src);
+  if (im){
+    const cover = Math.max(w / im.naturalWidth, h / im.naturalHeight) * 1.15;
+    x.filter = "blur(16px) brightness(.72) saturate(1.1)";
+    x.drawImage(im, (w - im.naturalWidth * cover) / 2, (h - im.naturalHeight * cover) / 2, im.naturalWidth * cover, im.naturalHeight * cover);
+    x.filter = "none";
+    const k = Math.min((w - 28) / im.naturalWidth, (h - 28) / im.naturalHeight, 1.6 * 0.75), iw = im.naturalWidth * k, ih = im.naturalHeight * k, ix = (w - iw) / 2, iy = (h - ih) / 2;
+    x.save(); x.shadowColor = "rgba(0,0,0,.55)"; x.shadowBlur = 18; x.shadowOffsetY = 8; canvasRR(x, ix, iy, iw, ih, 7); x.fillStyle = "#000"; x.fill(); x.restore();
+    x.save(); canvasRR(x, ix, iy, iw, ih, 7); x.clip(); x.drawImage(im, ix, iy, iw, ih); x.restore();
+  } else {
+    x.fillStyle = "#9EC3B8"; x.font = "600 11px Helvetica, Arial, sans-serif"; x.textAlign = "center"; x.fillText("Photo coming soon", w / 2, h / 2);
+  }
+  x.restore();
+  return c.toDataURL("image/jpeg", 0.9);
+}
+async function tintedMono(w, h, size, dx, dy, alpha){
+  const m = /url\("?([^")]+)"?\)/.exec(cssVar("--mono")); const im = await loadImg(m && m[1]); if (!im) return null;
+  const S = 3, c = document.createElement("canvas"); c.width = w * S; c.height = h * S; const x = c.getContext("2d"); x.scale(S, S);
+  const ih = size * im.naturalHeight / im.naturalWidth; x.drawImage(im, dx, dy, size, ih);
+  x.globalCompositeOperation = "source-in"; x.fillStyle = `rgba(165,223,211,${alpha})`; x.fillRect(0, 0, w, h);
+  return c.toDataURL("image/png");
+}
+async function roundedPng(dataUrl, w, h, r, bg = "#FFFFFF", S = 2){
+  const im = await loadImg(dataUrl); if (!im) return null;
+  const c = document.createElement("canvas"); c.width = w * S; c.height = h * S; const x = c.getContext("2d"); x.scale(S, S);
+  x.fillStyle = bg; x.fillRect(0, 0, w, h); x.save(); canvasRR(x, 0, 0, w, h, r); x.clip();
+  const k = Math.max(w / im.naturalWidth, h / im.naturalHeight); x.drawImage(im, (w - im.naturalWidth * k) / 2, (h - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k);
+  x.restore(); x.strokeStyle = "#E6DFD6"; x.lineWidth = 1; canvasRR(x, .5, .5, w - 1, h - 1, r); x.stroke();
+  return c.toDataURL("image/png");
+}
+async function lightMapPng(p, w, h){
+  if (!p.ll || !window.d3 || !geo()) return null;
+  const box = document.createElement("div"); box.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px`; document.body.appendChild(box);
+  drawMap(p, box, {water: "#D4E7EA", land: "#F6F3EE", border: "#B6C1BC", label: "#4F5D58", pin: "#C8352B", halo: "#F6F3EE"});
+  const png = await svgToPng(box.querySelector("svg"), 2); box.remove(); return png && png.data;
+}
+
+/* ---- the PDF: one letter page laid out like the project page ---- */
+async function buildProjectPdf(p){
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit: "pt", format: "letter"});
+  const PW = 612, PH = 792, M = 28, done = p.status === "completed";
+  const C = {green: [0,62,50], glass: [31,85,74], mint: [165,223,211], mintSoft: [207,231,224], ink: [22,33,29], ink2: [60,73,69], muted: [102,116,111],
+    line: [230,223,214], line2: [216,208,198], linen: [249,242,236], sunk: [243,236,229], white: [255,255,255], accent: [0,111,98],
+    doneBg: [221,242,236], doneInk: [0,89,78], openBg: [255,228,222], openInk: [161,55,35], divider: [36,96,84]};
+  const fill = c => doc.setFillColor(...c), stroke = c => doc.setDrawColor(...c), color = c => doc.setTextColor(...c);
+  const font = (w, s) => { doc.setFont("helvetica", w); doc.setFontSize(s); };
+  const T = pdfText;
+  const hex = h => [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const tint = (rgb, a) => rgb.map(v => Math.round(255 - (255 - v) * a));
+  const wrap = (s, w) => doc.splitTextToSize(T(s), w);
+  // pill: returns width; draws when draw !== false
+  const pill = (x, y, text, o = {}) => {
+    const size = o.size || 7.5, h = o.h || 15, pad = o.pad || 7, dot = o.dot ? 9 : 0;
+    font("bold", size); const w = doc.getTextWidth(T(text)) + pad * 2 + dot;
+    if (o.draw !== false){
+      fill(o.bg); if (o.border){ stroke(o.border); doc.setLineWidth(.7); doc.roundedRect(x, y, w, h, h / 2, h / 2, "FD"); } else doc.roundedRect(x, y, w, h, h / 2, h / 2, "F");
+      if (o.dot){ fill(o.dot); doc.circle(x + pad + 2.6, y + h / 2, 2.6, "F"); }
+      color(o.fg); doc.text(T(text), x + pad + dot, y + h / 2 + size * 0.36);
+    }
+    return w;
+  };
+  const label = (x, y, s, c = C.muted) => { font("bold", 7.5); color(c); doc.text(T(s), x, y); };
+
+  // page + header bar
+  fill(C.linen); doc.rect(0, 0, PW, PH, "F");
+  fill(C.white); doc.rect(0, 0, PW, 54, "F"); stroke(C.line); doc.setLineWidth(.8); doc.line(0, 54, PW, 54);
+  const logoSvg = document.querySelector(".site-logo .logo").cloneNode(true);
+  logoSvg.querySelectorAll(".mcl-2").forEach(n => n.setAttribute("fill", "#003e32")); logoSvg.querySelectorAll(".mcl-1").forEach(n => n.setAttribute("fill", "#63a09a"));
+  logoSvg.querySelector("style")?.remove(); logoSvg.setAttribute("width", "627"); logoSvg.setAttribute("height", "246");
+  const logo = await svgToPng(logoSvg, 1);
+  if (logo) doc.addImage(logo.data, "PNG", M, 13, 72, 72 * logo.h / logo.w);
+  stroke(C.line2); doc.setLineWidth(.8); doc.line(M + 84, 16, M + 84, 40);
+  font("bold", 10.5); color(C.ink); doc.text(T("Product Intelligence™ Performance Report"), M + 94, 26);
+  font("normal", 7.5); color(C.muted); doc.text("PIPR for mindclick subscribers", M + 94, 37);
+  font("normal", 7.5); doc.text(T(`Exported ${todayNice()}`), PW - M, 26, {align: "right"});
+  if (DATA.built){ doc.text(T(`Data as of ${DATA.built}`), PW - M, 37, {align: "right"}); }
+
+  // hero: green info panel + photo panel
+  const hy = 68, hh = 222, hw = PW - 2 * M, lw = 258;
+  fill(C.green); doc.roundedRect(M, hy, lw + 30, hh, 14, 14, "F");
+  const mono = await tintedMono(160, 150, 210, 40, 30, 0.10);
+  if (mono) doc.addImage(mono, "PNG", M + lw - 160, hy + hh - 150, 160, 150);
+  doc.addImage(await heroPhotoPanel(p.photo && IMAGES[p.photo], hw - lw, hh), "JPEG", M + lw, hy, hw - lw, hh);
+  let x = M + 20, y = hy + 20;
+  const chipMax = M + lw - 18;
+  const chips = [[done ? "Completed" : "Underway", {bg: done ? C.doneBg : C.openBg, fg: done ? C.doneInk : C.openInk, dot: done ? C.doneInk : C.openInk}]];
+  if (p.brand) chips.push([p.brand, {bg: C.glass, fg: [230,243,239]}]);
+  if (p.sector && p.sector !== "Hospitality") chips.push([p.sector, {bg: C.glass, fg: [230,243,239]}]);
+  for (const [t, o] of chips){ const w = pill(0, 0, t, {...o, draw: false}); if (x + w > chipMax && x > M + 20){ x = M + 20; y += 19; } pill(x, y, t, o); x += w + 5; }
+  y += 15 + 22;
+  font("bold", 21); color(C.white);
+  wrap(p.property, lw - 40).slice(0, 3).forEach(l => { doc.text(l, M + 20, y); y += 23; });
+  font("normal", 9.5); color(C.mintSoft); doc.text(T(NA(locNice(p), "Multiple locations")), M + 20, y - 4); y += 10;
+  if (p.versions){
+    label(M + 20, y + 10, "Evaluations", C.mint); x = M + 72;
+    current.versions.forEach((v, k) => { const on = k === verIdx, o = on ? {bg: C.mint, fg: C.green} : {bg: C.green, fg: [230,243,239], border: [70,120,108]};
+      const w = pill(0, 0, v.label, {...o, draw: false}); if (x + w > chipMax){ x = M + 72; y += 18; } pill(x, y, v.label, o); x += w + 4; });
+  }
+  const fy = hy + hh - 96; stroke(C.divider); doc.setLineWidth(.7); doc.line(M + 20, fy, M + lw - 18, fy);
+  const fact = (fx, fyy, lab, val, isType) => {
+    label(fx, fyy, lab, C.mint);
+    if (isType && val){ pill(fx, fyy + 5, val, {bg: C.glass, fg: C.white, dot: hex(TYPE_COLOR[val] || "#66746F"), size: 8, h: 16}); return; }
+    font("bold", 10); color(val ? C.white : [158,195,184]);
+    wrap(val || "N/A", 108).slice(0, 2).forEach((l, i) => doc.text(l, fx, fyy + 14 + i * 12));
+  };
+  const timing = p.timing || (done && p.end ? `Completed ${fmtMonth(p.end)}` : "");
+  fact(M + 20, fy + 18, "Project type", p.ptype, true); fact(M + 140, fy + 18, "Tier", p.tier);
+  fact(M + 20, fy + 58, "Timing", timing || "TBD"); fact(M + 140, fy + 58, "Scope", p.scopeLine);
+
+  // cards
+  const top = hy + hh + 16, bottom = PH - 44;
+  const card = (cx, cy, cw, ch) => { fill(C.white); stroke(C.line); doc.setLineWidth(.8); doc.roundedRect(cx, cy, cw, ch, 10, 10, "FD"); };
+  const title = (cx, cy, s) => { font("bold", 12); color(C.green); doc.text(T(s), cx, cy); };
+  const divider = (cx, cy, cw) => { stroke(C.line); doc.setLineWidth(.7); doc.line(cx, cy, cx + cw, cy); };
+  const LW = 330, RX = M + LW + 12, RW = PW - M - RX, P = 14;
+
+  // left: Project intelligence
+  const intel = draw => {
+    let yy = 0; const ix = M + P, iw = LW - 2 * P;
+    if (draw) title(ix, top + 22, "Project intelligence"); yy = 40;
+    if (draw) label(ix, top + yy, "Stage"); yy += 7;
+    const rows = p.stages.length ? p.stages : [{scope: "No stages recorded yet", stage: ""}];
+    for (const s of rows){
+      const cw = s.stage ? pill(0, 0, s.stage, {draw: false, size: 7}) : 0;
+      font("bold", 8.5); const lines = wrap(s.scope, iw - 16 - cw - 8); const rh = Math.max(20, lines.length * 10 + 10);
+      if (draw){ fill(C.sunk); doc.roundedRect(ix, top + yy, iw, rh, 5, 5, "F"); font("bold", 8.5); color(p.stages.length ? C.ink : C.muted);
+        lines.forEach((l, i) => doc.text(l, ix + 8, top + yy + 13 + i * 10));
+        if (s.stage){ const d = s.stage === "Completed"; pill(ix + iw - cw - 6, top + yy + (rh - 13) / 2, s.stage, {size: 7, h: 13, bg: d ? C.doneBg : C.openBg, fg: d ? C.doneInk : C.openInk}); } }
+      yy += rh + 4;
+    }
+    yy += 6; if (draw) divider(ix, top + yy, iw); yy += 16;
+    if (draw) label(ix, top + yy, "Property goals"); yy += 9;
+    if (!p.goals.length){ if (draw){ font("normal", 8.5); color(C.muted); doc.text("No property goals set yet", ix, top + yy + 6); } yy += 14; }
+    const colW = (iw - 14) / 2;
+    for (let i = 0; i < p.goals.length; i += 2){
+      let rowH = 0;
+      [p.goals[i], p.goals[i + 1]].forEach((g, k) => { if (!g) return; font("normal", 8.5); const ls = wrap(g, colW - 16); rowH = Math.max(rowH, ls.length * 10.5);
+        if (draw){ const gx = ix + k * (colW + 14), gy = top + yy;
+          fill(C.doneBg); doc.circle(gx + 5, gy + 4, 5, "F"); stroke(C.doneInk); doc.setLineWidth(1.2); doc.lines([[1.8, 1.8], [3.4, -3.6]], gx + 2.6, gy + 4.1);
+          color(C.ink2); ls.forEach((l, j) => doc.text(l, gx + 15, gy + 7 + j * 10.5)); } });
+      yy += rowH + 6;
+    }
+    return yy + 6;
+  };
+  const h1 = intel(false); card(M, top, LW, h1); intel(true);
+
+  // left: Property profile
+  const pTop = top + h1 + 12;
+  const profile = draw => {
+    const ix = M + P, cw3 = (LW - 2 * P - 20) / 3; let maxH = 0;
+    if (draw) title(ix, pTop + 22, "Property profile");
+    [["Owner", NA(p.owner, "TBD")], ["Management", NA(p.mgmt, "TBD")], ["General contractor", NA(splitList(p.gc).join(", "), "N/A")]].forEach(([l, v], k) => {
+      const cx = ix + k * (cw3 + 10); font("bold", 9); const ls = wrap(v, cw3);
+      if (draw){ label(cx, pTop + 42, l); font("bold", 9); color(["TBD", "N/A"].includes(v) ? C.muted : C.ink); ls.forEach((t, j) => doc.text(t, cx, pTop + 55 + j * 11)); }
+      maxH = Math.max(maxH, ls.length * 11);
+    });
+    return 55 + maxH + 6;
+  };
+  const h2 = profile(false); card(M, pTop, LW, h2); profile(true);
+
+  // right: Engagement path (suppliers fill the space that's left; the map sits at the bottom)
+  const ex = RX + P, ew = RW - 2 * P;
+  let mapH = 118;
+  const hasMap = !!(p.ll && window.d3 && geo());
+  const blockFor = h => hasMap ? 16 + h + (p.address || p.city ? 16 : 6) : 30;
+  let mapBlock = blockFor(mapH);
+  const party = (draw, yy, letter, role, value, list) => {
+    if (draw){ fill(C.doneBg); doc.roundedRect(ex, top + yy, 22, 22, 6, 6, "F"); font("bold", 10); color(C.doneInk); doc.text(letter, ex + 11, top + yy + 14.5, {align: "center"}); label(ex + 30, top + yy + 8, role); }
+    let ty = yy + 20; const tx = ex + 30, tw = ew - 30;
+    const fc = firmContacts(value, list);
+    if (!fc.length){ if (draw){ font("bold", 9.5); color(C.muted); doc.text("TBD", tx, top + ty); } return ty + 10; }
+    for (const f of fc){
+      font("bold", 9.5); const fl = wrap(f.firm, tw);
+      if (draw){ color(C.ink); fl.forEach((l, i) => doc.text(l, tx, top + ty + i * 11)); }
+      ty += fl.length * 11;
+      for (const c of f.contacts){
+        const lines = [[c.name + (c.title ? ", " + titleCase(c.title) : ""), "bold", C.ink], [c.email, "bold", C.accent], [c.phone, "bold", C.accent]].filter(l => l[0]);
+        font("normal", 7.5); const wrapped = lines.flatMap(([t, w, col]) => wrap(t, tw - 14).map(s => [s, w, col]));
+        const bh = wrapped.length * 9.5 + 9;
+        if (draw){ fill(C.sunk); doc.roundedRect(tx, top + ty - 4, tw, bh, 5, 5, "F"); wrapped.forEach(([s, w, col], i) => { font(w, 7.5); color(col); doc.text(s, tx + 7, top + ty + 6 + i * 9.5); }); }
+        ty += bh + 3;
+      }
+      ty += 4;
+    }
+    return ty + 4;
+  };
+  const engagement = (draw, withMap) => {
+    if (draw) title(ex, top + 22, "Engagement path");
+    let yy = 36, allFit = true;
+    yy = party(draw, yy, "D", "Design firm", p.design, p.contact.design);
+    yy = party(draw, yy, "P", "Purchasing firm", p.procurement, p.contact.procurement);
+    if (draw) divider(ex, top + yy, ew); yy += 16;
+    const room = bottom - top - yy - (withMap ? mapBlock + 24 : 14);
+    if (done){
+      if (draw) label(ex, top + yy, p.suppliers.length ? `Featured suppliers (${p.suppliers.length})` : "Featured suppliers"); yy += 7;
+      if (!p.suppliers.length){ if (draw){ font("normal", 8.5); color(C.muted); doc.text("No featured suppliers recorded yet", ex, top + yy + 8); } yy += 14; }
+      else {
+        // lay out pills, keeping room for a "+N more" pill when they don't all fit
+        const place = list => { let px = 0, row = 0; const pos = []; for (const s of list){ const w = Math.min(pill(0, 0, s, {draw: false, size: 7, h: 14, pad: 6}), ew); if (px + w > ew){ px = 0; row++; } pos.push([px, row, w]); px += w + 4; } return {pos, rows: row + 1}; };
+        let n = p.suppliers.length, lay = place(p.suppliers);
+        while (lay.rows * 18 > room && n > 1){ n--; lay = place([...p.suppliers.slice(0, n), `+${p.suppliers.length - n} more`]); }
+        const items = n < p.suppliers.length ? [...p.suppliers.slice(0, n), `+${p.suppliers.length - n} more`] : p.suppliers;
+        if (draw) items.forEach((s, i) => { const [px, row] = lay.pos[i]; const more = n < p.suppliers.length && i === items.length - 1;
+          pill(ex + px, top + yy + row * 18, s, {size: 7, h: 14, pad: 6, bg: more ? C.sunk : C.white, fg: more ? C.muted : C.ink, border: more ? null : C.line2}); });
+        yy += lay.rows * 18; allFit = n === p.suppliers.length;
+      }
+    } else {
+      if (draw){ label(ex, top + yy, "Sales opportunity"); font("bold", 12); color(p.salesOpp ? C.ink : C.muted); doc.text(T(NA(p.salesOpp, "TBD")), ex, top + yy + 16); }
+      yy += 24;
+    }
+    if (withMap){ yy += 8; if (draw) divider(ex, top + yy, ew); yy += 16; } else yy += 6;
+    return {yy, allFit};
+  };
+  // the map sits under Engagement path like on the site; when that would cut the supplier list, it moves to its own card on the left
+  const leftEnd = pTop + h2, leftFree = bottom - leftEnd - 12;
+  let mapRight = true, e = engagement(false, true);
+  if (!e.allFit && leftFree >= 130){ mapRight = false; e = engagement(false, false); }
+  while (hasMap && mapRight && !e.allFit && mapH > 72){ mapH -= 12; mapBlock = blockFor(mapH); e = engagement(false, true); }  // smaller map before cutting suppliers
+  card(RX, top, RW, e.yy + (mapRight ? mapBlock + 4 : 0));
+  engagement(true, mapRight);
+  const drawMapAt = async (mx, my, mw, mh) => {
+    label(mx, my, "Location");
+    if (!hasMap){ font("bold", 9.5); color(C.muted); doc.text(T(NA(locNice(p), "Multiple locations")), mx, my + 15); return; }
+    const png = await lightMapPng(p, Math.round(mw * 2), Math.round(mh * 2));
+    const img = png && await roundedPng(png, mw, mh, 7);
+    if (img) doc.addImage(img, "PNG", mx, my + 7, mw, mh);
+    else { fill(C.sunk); doc.roundedRect(mx, my + 7, mw, mh, 7, 7, "F"); font("normal", 8.5); color(C.muted); doc.text(T(p.city ? "Location not mapped yet" : "Multiple locations"), mx + mw / 2, my + 7 + mh / 2, {align: "center"}); }
+    if (p.address || p.city){ font("normal", 7.5); color(C.muted); doc.text(T([p.address, p.city].filter(Boolean).join(", ")), mx, my + mh + 20); }
+  };
+  if (mapRight) await drawMapAt(ex, top + e.yy, ew, mapH);
+  else {
+    const lh = hasMap ? Math.min(leftFree, 210) : 56, mh = lh - 16 - 28 - (p.address || p.city ? 12 : 0);
+    card(M, leftEnd + 12, LW, lh);
+    await drawMapAt(M + P, leftEnd + 12 + 22, LW - 2 * P, mh);
+  }
+
+  // footer
+  fill(C.green); doc.rect(0, PH - 28, PW, 28, "F");
+  font("normal", 7.5); color(C.white); doc.text(T("mindclick • Product Intelligence™ Performance Report"), M, PH - 11);
+  doc.text(T(`© ${new Date().getFullYear()} mindclick`), PW / 2, PH - 11, {align: "center"});
+  font("bold", 7.5); doc.text("CONFIDENTIAL - FOR SUBSCRIBERS", PW - M, PH - 11, {align: "right"});
+  return doc.output("blob");
+}
 
 /* ---------- MARKET INSIGHTS (completed projects only) ---------- */
 const TIER_ORDER = ["Luxury","Upper Upscale","Upscale","Upper Midscale","Midscale","Economy"];
@@ -1000,7 +1181,11 @@ $("miCards").addEventListener("click", e => { const c = e.target.closest(".pcard
 $("miBody").addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) goProject(tr.dataset.id); });
 $("miDl").addEventListener("click", () => {
   const rows = miRows().map(p => [p.property, locLine(p), typesOf(p).join(" + ") || "N/A", NA(p.brand), NA(p.tier), NA(p.mgmt, "TBD"), NA(p.design), NA(p.procurement), p.scopeList.join("; ") || "N/A", fmtMonth(p.end) || "N/A"]);
-  saveFile("PIPR_Market_Insights.csv", toCsv([["Project name","Location","Project type","Brand","Hotel tier","Management","Design firms","Procurement company","Scope","Completion date"], ...rows]), "text/csv");
+  const f = [["Search", $("miQ").value.trim() && `"${$("miQ").value.trim()}"`], ["Design firm", $("miDesign").value], ["Procurement", $("miProc").value], ["Project type", $("miType").value], ["Management", $("miMgmt").value]]
+    .filter(([, v]) => v).map(([k, v]) => `${k} = ${v}`).join("; ");
+  const sort = $("miSort").selectedOptions[0].textContent;
+  saveFile(fileName("Market Insights", "csv"), brandedCsv(`Market insights: ${rows.length} completed projects (sorted ${sort.toLowerCase()})`, f,
+    ["Project name","Location","Project type","Brand","Hotel tier","Management","Design firms","Procurement company","Scope","Completion date"], rows), "text/csv");
 });
 
 /* ---------- ACCREDITED DESIGN FIRMS ---------- */
@@ -1033,8 +1218,12 @@ document.querySelectorAll(".firms thead th").forEach(th => th.querySelector("but
 ["fTeam","fEst"].forEach(id => $(id).addEventListener("change", renderFirms));
 $("fQ").addEventListener("input", () => { clearTimeout(qT); qT = setTimeout(renderFirms, 120); });
 $("fClear").addEventListener("click", () => { $("fQ").value = ""; $("fTeam").value = ""; $("fEst").value = ""; renderFirms(); });
-$("fDl").addEventListener("click", () => saveFile("PIPR_Accredited_Design_Firms.csv",
-  toCsv([["A&D firm","Team size","Estimated projects annually","Accredited designers","Lead contact"], ...fRows().map(f => [f.firm, f.team, f.est, f.pros, f.contact])]), "text/csv"));
+$("fDl").addEventListener("click", () => {
+  const rows = fRows();
+  const f = [["Search", $("fQ").value.trim() && `"${$("fQ").value.trim()}"`], ["Team size", $("fTeam").value], ["Est. projects a year", $("fEst").value]].filter(([, v]) => v).map(([k, v]) => `${k} = ${v}`).join("; ");
+  saveFile(fileName("Accredited Design Firms", "csv"), brandedCsv(`HSDC accredited A&D firms: ${rows.length} firms`, f,
+    ["A&D firm","Team size","Estimated projects annually","Accredited designers","Lead contact"], rows.map(x => [x.firm, x.team, x.est, x.pros, x.contact])), "text/csv");
+});
 
 /* ---------- start ---------- */
 renderInsights(); renderFirms();
