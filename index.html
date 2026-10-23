@@ -27,7 +27,7 @@
   --shadow:0 1px 2px rgba(0,40,32,.06), 0 8px 24px -12px rgba(0,40,32,.18);
   --r-lg:20px; --r-md:14px; --r-sm:10px;
   --font:"Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  --headH:68px;
+  --headH:68px; --overlap:30px;
   color-scheme: light; box-sizing:border-box;
   padding-top:env(safe-area-inset-top, 0px); padding-bottom:env(safe-area-inset-bottom, 0px);
 }
@@ -71,6 +71,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .nav{margin-left:auto;display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px;border:1px solid var(--line)}
 .nav button{border:0;background:none;padding:8px 16px;border-radius:999px;font-weight:700;font-size:14px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .nav button:hover{color:var(--ink)}
+.nav .sm{display:none}
 .nav button[aria-selected="true"]{background:var(--band);color:var(--band-ink);box-shadow:0 1px 2px rgba(0,0,0,.15)}
 
 main{flex:1;padding:28px 0 56px}
@@ -99,7 +100,9 @@ main{flex:1;padding:28px 0 56px}
 .select select{appearance:none;-webkit-appearance:none;border:1px solid var(--line-2);background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%2366746F' stroke-width='2'%3E%3Cpath d='m1 1.5 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;border-radius:999px;padding:9px 36px 9px 14px;font-size:14px;max-width:240px;min-width:140px;cursor:pointer}
 .select select.on{border-color:var(--sage);background-color:var(--hover);font-weight:600}
 .filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);margin-bottom:18px}
-.filters .search{flex:1 1 260px}
+.filters .search{flex:1 1 220px}
+.filters .select{flex:0 1 210px}
+.filters .select select{width:100%;max-width:none;min-width:0}
 .filters .tail{margin-left:auto;display:flex;align-items:center;gap:10px}
 .count{font-size:14px;color:var(--muted);margin:0 0 12px}
 .count b{color:var(--ink)}
@@ -146,7 +149,7 @@ main{flex:1;padding:28px 0 56px}
 .hero .bg img{width:100%;height:100%;object-fit:cover;display:block}
 .hero .bg.empty{background:radial-gradient(120% 120% at 100% 0%, #0d5a4b 0%, #003E32 55%, #002a22 100%)}
 .hero::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg, rgba(0,20,16,0) 30%, rgba(0,20,16,.35) 55%, rgba(0,22,18,.86) 100%)}
-.hero .copy{padding:28px 32px;color:#fff;width:100%}
+.hero .copy{padding:28px 32px calc(var(--overlap) + 36px);color:#fff;width:100%}
 .hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .hero .chips .chip{backdrop-filter:blur(6px)}
 .hero .chip.glass{background:rgba(255,255,255,.18);color:#fff}
@@ -155,7 +158,7 @@ main{flex:1;padding:28px 0 56px}
 .hero .where a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.5);display:inline-flex;gap:6px;align-items:center}
 .hero .where svg{width:15px;height:15px}
 
-.facts{display:grid;grid-template-columns:repeat(4, minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin:-34px 24px 0;position:relative;box-shadow:var(--shadow)}
+.facts{display:grid;grid-template-columns:repeat(4, minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin:calc(-1 * var(--overlap)) 24px 0;position:relative;box-shadow:var(--shadow)}
 .facts>div{padding:16px 20px;border-left:1px solid var(--line);min-width:0}
 .facts>div:first-child{border-left:0}
 .facts dt{font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:4px}
@@ -281,7 +284,7 @@ footer .conf{margin-left:auto;font-weight:800;color:var(--accent-strong);letter-
   .site-head .wrap{flex-wrap:wrap;height:auto;padding-top:10px;padding-bottom:10px;gap:10px}
   .nav{margin-left:0;width:100%;overflow-x:auto;scrollbar-width:none}
   .nav button{flex:1}
-  .facts{grid-template-columns:repeat(2,minmax(0,1fr));margin:-28px 14px 0}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr));margin:calc(-1 * var(--overlap)) 14px 0}
   .facts>div:nth-child(3){border-left:0}
   .facts>div:nth-child(n+3){border-top:1px solid var(--line)}
   .aside{top:auto}
@@ -290,20 +293,25 @@ footer .conf{margin-left:auto;font-weight:800;color:var(--accent-strong);letter-
   .wrap{padding:0 14px}
   main{padding-top:18px}
   .brandline span{display:none}
+  .brandline b{white-space:normal;font-size:13px}
+  .site-logo{flex:1}
   .logo{width:96px}
   .page-head h1,.band h1{font-size:26px}
   .hero{min-height:300px}
-  .hero .copy{padding:20px}
+  .hero .copy{padding:20px 20px calc(var(--overlap) + 28px)}
   .card{padding:18px}
   .goals,.dl3{grid-template-columns:1fr}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .band{padding:22px}
   .picker{flex-basis:100%;max-width:none}
-  .picker-row .actions{margin-left:0}
   .filters .select{flex:1 1 calc(50% - 6px)}
   .select select{max-width:none;width:100%;min-width:0}
   .filters .tail{margin-left:0;width:100%;justify-content:space-between}
   .nav button{padding:8px 10px;font-size:13px}
+  .nav .sm{display:inline}.nav .lg{display:none}
+  .picker-row .actions .btn{padding:9px 14px}
+  .lg-inline{display:none}
+  .picker-row .actions{margin-left:auto}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 @media print{ .site-head,.picker-row,.filters,footer,.toast{display:none!important} .tablewrap{max-height:none;overflow:visible} }
@@ -345,7 +353,7 @@ footer .conf{margin-left:auto;font-weight:800;color:var(--accent-strong);letter-
     <nav class="nav" role="tablist" aria-label="Report sections">
       <button role="tab" id="tab-projects" aria-controls="view-projects" data-view="projects">Projects</button>
       <button role="tab" id="tab-insights" aria-controls="view-insights" data-view="insights">Market insights</button>
-      <button role="tab" id="tab-firms" aria-controls="view-firms" data-view="firms">Accredited design firms</button>
+      <button role="tab" id="tab-firms" aria-controls="view-firms" data-view="firms"><span class="lg">Accredited design firms</span><span class="sm">Design firms</span></button>
     </nav>
   </div>
 </header>
@@ -378,7 +386,7 @@ footer .conf{margin-left:auto;font-weight:800;color:var(--accent-strong);letter-
       </div>
       <div class="actions">
         <button class="btn quiet" id="projCsv" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>CSV</button>
-        <button class="btn" id="projPdf" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>Download PDF</button>
+        <button class="btn" id="projPdf" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg><span class="lg-inline">Download </span>PDF</button>
       </div>
     </div>
 
